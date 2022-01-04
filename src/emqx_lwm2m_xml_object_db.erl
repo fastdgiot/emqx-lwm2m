@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ find_objectid(ObjectId) ->
                         false -> ObjectId
                     end,
     case ets:lookup(?LWM2M_OBJECT_DEF_TAB, ObjectIdInt) of
-        [] -> error(no_xml_definition);
+        [] -> {error, no_xml_definition};
         [{ObjectId, Xml}] -> Xml
     end.
 
@@ -86,8 +86,8 @@ stop() ->
 %% ------------------------------------------------------------------
 
 init([]) ->
-    ets:new(?LWM2M_OBJECT_DEF_TAB, [set, named_table, protected]),
-    ets:new(?LWM2M_OBJECT_NAME_TO_ID_TAB, [set, named_table, protected]),
+    _ = ets:new(?LWM2M_OBJECT_DEF_TAB, [set, named_table, protected]),
+    _ = ets:new(?LWM2M_OBJECT_NAME_TO_ID_TAB, [set, named_table, protected]),
     PluginsEtcDir = emqx:get_env(plugins_etc_dir),
     DefBaseDir = re:replace(PluginsEtcDir, "plugins", "lwm2m_xml", [{return, list}]),
     BaseDir = application:get_env(emqx_lwm2m, xml_dir, DefBaseDir),
@@ -121,8 +121,10 @@ load(BaseDir) ->
                true  -> BaseDir++"*.xml";
                false -> BaseDir++"/*.xml"
            end,
-    AllXmlFiles = filelib:wildcard(Wild),
-    load_loop(AllXmlFiles).
+    case filelib:wildcard(Wild) of
+        [] -> error(no_xml_files_found, BaseDir);
+        AllXmlFiles -> load_loop(AllXmlFiles)
+    end.
 
 load_loop([]) ->
     ok;

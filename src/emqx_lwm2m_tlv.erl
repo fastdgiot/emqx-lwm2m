@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,6 +19,11 @@
 -export([ parse/1
         , encode/1
         ]).
+
+
+-ifdef(TEST).
+-export([binary_to_hex_string/1]).
+-endif.
 
 -include("emqx_lwm2m.hrl").
 

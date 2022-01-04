@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -47,9 +47,12 @@
 
 -define(LOG(Level, Format, Args), logger:Level("LWM2M-RESOURCE: " ++ Format, Args)).
 
+-dialyzer([{nowarn_function, [coap_discover/2]}]).
+% we use {'absolute', list(binary()), [{atom(), binary()}]} as coap_uri()
+% https://github.com/emqx/lwm2m-coap/blob/258e9bd3762124395e83c1e68a1583b84718230f/src/lwm2m_coap_resource.erl#L61
 % resource operations
 coap_discover(_Prefix, _Args) ->
-    [{absolute, "mqtt", []}].
+    [{absolute, [<<"mqtt">>], []}].
 
 coap_get(ChId, [?PREFIX], Query, Content, Lwm2mState) ->
     ?LOG(debug, "~p ~p GET Query=~p, Content=~p", [self(),ChId, Query, Content]),

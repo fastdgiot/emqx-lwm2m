@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@
         , opaque_to_json/2
         , translate_json/1
         ]).
+-ifdef(TEST).
+-export([ bits/1 ]).
+-endif.
 
 -include("emqx_lwm2m.hrl").
 
@@ -45,7 +48,7 @@ tlv_to_json(BaseName, TlvData) ->
             TrueBaseName = basename(BaseName, undefined, Id, undefined, 2),
             tlv_level2(TrueBaseName, Value, ObjDefinition, []);
         List3=[#{tlv_object_instance:=_Id}, _|_] ->
-            tlv_level1(ObjectId, List3, ObjDefinition, [])
+            tlv_level1(integer_to_binary(ObjectId), List3, ObjDefinition, [])
     end.
 
 
@@ -90,13 +93,13 @@ basename(OldBaseName, _ObjectId, ObjectInstanceId, _ResourceId, 2) ->
         [ObjId, ObjInsId, _ResId] -> <<$/, ObjId/binary, $/, ObjInsId/binary>>;
         [ObjId, ObjInsId] -> <<$/, ObjId/binary, $/, ObjInsId/binary>>;
         [ObjId] -> <<$/, ObjId/binary, $/, (integer_to_binary(ObjectInstanceId))/binary>>
-    end;
-basename(OldBaseName, _ObjectId, _ObjectInstanceId, _ResourceId, 1) ->
-    case binary:split(binary_util:trim(OldBaseName, $/), [<<$/>>], [global]) of
-        [ObjId, _ObjInsId, _ResId]       -> <<$/, ObjId/binary>>;
-        [ObjId, _ObjInsId]               -> <<$/, ObjId/binary>>;
-        [ObjId]                          -> <<$/, ObjId/binary>>
     end.
+% basename(OldBaseName, _ObjectId, _ObjectInstanceId, _ResourceId, 1) ->
+%    case binary:split(binary_util:trim(OldBaseName, $/), [<<$/>>], [global]) of
+%        [ObjId, _ObjInsId, _ResId]       -> <<$/, ObjId/binary>>;
+%        [ObjId, _ObjInsId]               -> <<$/, ObjId/binary>>;
+%        [ObjId]                          -> <<$/, ObjId/binary>>
+%    end.
 
 make_path(RelativePath, Id) ->
     <<RelativePath/binary, $/, (integer_to_binary(Id))/binary>>.
@@ -126,7 +129,7 @@ value(Value, ResourceId, ObjDefinition) ->
             Value;  % keep binary type since it is same as a string for jsx
         "Integer" ->
             Size = byte_size(Value)*8,
-            <<IntResult:Size>> = Value,
+            <<IntResult:Size/signed>> = Value,
             IntResult;
         "Float" ->
             Size = byte_size(Value)*8,
@@ -187,7 +190,7 @@ insert(Level, #{<<"path">> := EleName, <<"type">> := Type, <<"value">> := Value}
     case Level of
         object          -> insert_resource_into_object(Path, BinaryValue, Acc);
         object_instance -> insert_resource_into_object_instance(Path, BinaryValue, Acc);
-        resource        -> insert_resource_instance_into_resource(Path, BinaryValue, Acc)
+        resource        -> insert_resource_instance_into_resource(hd(Path), BinaryValue, Acc)
     end.
 
 % json text to TLV binary
@@ -197,7 +200,10 @@ value_ex(K, Value) when K =:= <<"Integer">>; K =:= <<"Float">>; K =:= <<"Time">>
 value_ex(K, Value) when K =:= <<"String">> ->
     Value;
 value_ex(K, Value) when K =:= <<"Opaque">> ->
-    Value;
+    %% XXX: force to decode it with base64
+    %%      This may not be a good implementation, but it is
+    %%      consistent with the treatment of Opaque in value/3
+    base64:decode(Value);
 value_ex(K, <<"true">>) when K =:= <<"Boolean">> -> <<1>>;
 value_ex(K, <<"false">>) when K =:= <<"Boolean">> -> <<0>>;
 
@@ -229,7 +235,7 @@ insert_resource_into_object_instance([ResourceId, ResourceInstanceId], Value, Ac
 insert_resource_into_object_instance([ResourceId], Value, Acc) ->
     NewMap = #{tlv_resource_with_value=>integer(ResourceId), value=>Value},
     case find_resource(ResourceId, Acc) of
-        undeinfed ->
+        undefined ->
             Acc ++ [NewMap];
         Resource ->
             Acc2 = lists:delete(Resource, Acc),
@@ -239,7 +245,7 @@ insert_resource_into_object_instance([ResourceId], Value, Acc) ->
 insert_resource_instance_into_resource(ResourceInstanceId, Value, Acc) ->
     NewMap = #{tlv_resource_instance=>integer(ResourceInstanceId), value=>Value},
     case find_resource_instance(ResourceInstanceId, Acc) of
-        undeinfed ->
+        undefined ->
             Acc ++ [NewMap];
         Resource ->
             Acc2 = lists:delete(Resource, Acc),
@@ -361,23 +367,6 @@ encode_number(Int) when is_integer(Int) ->
 encode_number(Float) when is_float(Float) ->
     <<Float:64/float>>.
 
-encode_int(Int) when Int >= 0 ->
-    binary:encode_unsigned(Int);
-encode_int(Int) when Int < 0 ->
-    Size = byte_size_of_signed(-Int) * 8,
-    <<Int:Size>>.
-
-byte_size_of_signed(UInt) ->
-    byte_size_of_signed(UInt, 0).
-
-byte_size_of_signed(UInt, N) ->
-    BitSize = (8*N - 1),
-    Max = (1 bsl BitSize),
-    if
-        UInt =< Max -> N;
-        UInt > Max -> byte_size_of_signed(UInt, N+1)
-    end.
-
 binary_to_number(NumStr) ->
     try
         binary_to_integer(NumStr)
@@ -385,3 +374,26 @@ binary_to_number(NumStr) ->
         error:badarg ->
             binary_to_float(NumStr)
     end.
+
+encode_int(Int) ->
+    Bits = bits(Int),
+    <<Int:Bits/signed>>.
+
+bits(I) when I < 0 -> bits_neg(I);
+bits(I) -> bits_pos(I).
+
+%% Quote:
+%% Integer: An 8, 16, 32 or 64-bit signed integer.
+%% The valid range of the value for a Resource SHOULD be defined.
+%% This data type is also used for the purpose of enumeration.
+%%
+%% NOTE: Integer should not be encoded to 24-bits, 40-bits, etc.
+bits_pos(I) when I < (1 bsl 7)  -> 8;
+bits_pos(I) when I < (1 bsl 15) -> 16;
+bits_pos(I) when I < (1 bsl 31) -> 32;
+bits_pos(I) when I < (1 bsl 63) -> 64.
+
+bits_neg(I) when I >= -((1 bsl 7))  -> 8;
+bits_neg(I) when I >= -((1 bsl 15)) -> 16;
+bits_neg(I) when I >= -((1 bsl 31)) -> 32;
+bits_neg(I) when I >= -((1 bsl 63)) -> 64.

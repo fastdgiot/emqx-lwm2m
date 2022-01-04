@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@
     logger:Level("LWM2M-TIMER: " ++ Format, Args)).
 
 cancel_timer(#timer_state{tref = TRef}) when is_reference(TRef) ->
-    erlang:cancel_timer(TRef), ok.
+    _ = erlang:cancel_timer(TRef), ok.
 
 refresh_timer(State=#timer_state{interval = Interval, message = Msg}) ->
     cancel_timer(State), start_timer(Interval, Msg).

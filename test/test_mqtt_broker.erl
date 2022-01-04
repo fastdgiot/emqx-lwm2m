@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 -module(test_mqtt_broker).
 
+-compile(nowarn_export_all).
 -compile(export_all).
 
 -define(LOGT(Format, Args), logger:debug("TEST_BROKER: " ++ Format, Args)).
@@ -27,8 +28,6 @@
 -include_lib("emqx/include/emqx_mqtt.hrl").
 
 -include_lib("eunit/include/eunit.hrl").
-
--import(proplists, [get_value/2, get_value/3]).
 
 start(_, <<"attacker">>, _, _, _) ->
     {stop, auth_failure};
@@ -51,7 +50,7 @@ unsubscribe(Topic) ->
     gen_server:call(?MODULE, {unsubscribe, Topic}).
 
 get_subscrbied_topics() ->
-    [Topic || {Client, Topic} <- ets:tab2list(emqx_subscription)].
+    [Topic || {_Client, Topic} <- ets:tab2list(emqx_subscription)].
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
